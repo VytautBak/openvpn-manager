@@ -1,21 +1,5 @@
 
-#include <arpa/inet.h>  //inet_addr
-#include <stdbool.h>
-#include <stdio.h>  //printf
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>      //strlen
-#include <sys/socket.h>  //socket
-#include <unistd.h>
-
-#define SOCKET_ADRESS "127.0.0.1"
-#define SOCKET_PORT 17111
-#define MAX_LEN_RESPONSE 10000
-
-#define NAME_LEN 25
-#define ADDRESS_LEN 22
-#define BYTES_LEN 20
-#define TIME_LEN 20
+#include "socket_handler.h"
 
 struct client {
   char common_name[NAME_LEN];
@@ -27,32 +11,9 @@ struct client {
   struct client *next; /* This is a singly-linked list */
 };
 
-int main(int argc, char *argv[]) {
-  int sock;
-  struct sockaddr_in server;
-  char message[1000], server_reply[10000];
+int sock;
 
-  create_server(&server);
-
-  int rc = create_socket(&sock);
-  if (rc != 0) return rc;
-
-  rc = connect_to_openvpn(&sock, &server);
-  if (rc != 0) return rc;
-
-  deal_with_login_message(&sock);
-  struct client *client_list = NULL;
-  rc = get_client_list(&sock, &client_list);
-  //free_client_list(client_list);
-
-  kill_client(&sock, 0);
-
-  format_table_of_clients(client_list);
-  close(sock);
-  return 0;
-}
-
-char *format_table_of_clients(struct client *client_list) {
+void format_table_of_clients(struct client *client_list) {
   struct client *curr = client_list;
   int n = 0;
   while(curr != NULL) {
@@ -71,19 +32,20 @@ char *format_table_of_clients(struct client *client_list) {
     j += sprintf(table + j, "%-5s\t %-25s\t %-20s\t %-20s\t %-20s\t %-20s\t\n", id, curr->common_name, curr->real_address, curr->bytes_sent, curr->bytes_received, curr->connected_since);
     curr = curr->next;
   }
-  return table;
-}
-void deal_with_login_message(int *sock) {
-  char response[200];
-  int rc = recv(*sock, response, 200, 0);
 }
 
-int kill_client(int *sock, int id) {
+
+void deal_with_login_message() {
+  char response[200];
+  int rc = recv(sock, response, 200, 0);
+}
+
+int kill_client(int id) {
   char message[50];
   char response[MAX_LEN_RESPONSE];
   sprintf(message, "client-kill %d\n", id);
 
-  int rc = send(*sock, message, strlen(message), 0);
+  int rc = send(sock, message, strlen(message), 0);
   if (rc != strlen(message)) {
     fprintf(stderr, "ERROR: Failed to send message to OpenVPN management server\n");
     return -1;
@@ -93,7 +55,7 @@ int kill_client(int *sock, int id) {
   bool success = false;
   for (int i = 0; i < 3; i++) {
     fprintf(stdout, "INFO: Attempting to parse response from OpenVPN management server n = %d\n", i + 1);
-    rc = recv(*sock, response, MAX_LEN_RESPONSE, 0);
+    rc = recv(sock, response, MAX_LEN_RESPONSE, 0);
     if (rc > 0) {
       success = true;
       fprintf(stdout, "INFO: Succesfully parsed response from OpenVPN management server\n");
@@ -130,20 +92,20 @@ void create_server(struct sockaddr_in *server) {
   server->sin_port = htons(SOCKET_PORT);
 }
 
-int create_socket(int *sock) {
-  *sock = socket(AF_INET, SOCK_STREAM, 0);
-  if (*sock == -1) {
+int create_socket() {
+  sock = socket(AF_INET, SOCK_STREAM, 0);
+  if (sock == -1) {
     fprintf(stderr, "ERROR: Could not create socket");
     return -1;
   }
   return 0;
 }
 
-int get_client_list(int *sock, struct client **client_list) {
+int get_client_list(struct client **client_list) {
   char response[MAX_LEN_RESPONSE];
 
   char *tmp = "status 2\n";
-  int rc = send(*sock, tmp, strlen(tmp), 0);
+  int rc = send(sock, tmp, strlen(tmp), 0);
   if (rc != strlen(tmp)) {
     fprintf(stderr, "ERROR: Failed to send message to OpenVPN management server\n");
     return -1;
@@ -155,7 +117,7 @@ int get_client_list(int *sock, struct client **client_list) {
   bool success = false;
   for (int i = 0; i < 3; i++) {
     fprintf(stdout, "INFO: Attempting to parse response from OpenVPN management server n = %d\n", i + 1);
-    rc = recv(*sock, response, MAX_LEN_RESPONSE, 0);
+    rc = recv(sock, response, MAX_LEN_RESPONSE, 0);
     if (rc > 0) {
       success = true;
       break;
@@ -172,8 +134,8 @@ int get_client_list(int *sock, struct client **client_list) {
   return 0;
 }
 
-int connect_to_openvpn(int *sock, struct sockaddr_in *server) {
-  int rc = connect(*sock, (struct sockaddr *)server, sizeof(*server));
+int connect_to_openvpn(struct sockaddr_in *server) {
+  int rc = connect(sock, (struct sockaddr *)server, sizeof(*server));
   if (rc < 0) {
     fprintf(stderr, "ERROR: Failed connecting to server");
     return -1;
