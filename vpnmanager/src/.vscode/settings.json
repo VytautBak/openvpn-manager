@@ -1,0 +1,7 @@
+{
+  "files.associations": {
+    "libubus.h": "c",
+    "blobmsg_json.h": "c",
+    "stdbool.h": "c"
+  }
+}
